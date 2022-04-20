@@ -21,6 +21,7 @@ namespace PedigreeManagement.Static
 
         public static Bitmap QRCode_Creator(string str)
         {
+            //using QRCoder，string to Bitmap
             QRCodeGenerator QR = new QRCodeGenerator();
             QRCodeData cd = QR.CreateQrCode(str, QRCodeGenerator.ECCLevel.Q);
             QRCode qRCode = new QRCode(cd);
@@ -30,6 +31,7 @@ namespace PedigreeManagement.Static
 
         public static ImageSource ImageSourceFromBitmap(Bitmap bmp)
         {
+            //Bitmap to ImageSource => Image.Source = ImageSourceFromBitmap(QRCode_Creator(str));
             var handle = bmp.GetHbitmap();
             try
             {
