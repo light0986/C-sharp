@@ -11,7 +11,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
-namespace PedigreeManagement.Static
+namespace project_name
 {
     public class WPF_QRCode
     {
