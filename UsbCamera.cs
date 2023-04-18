@@ -7,6 +7,7 @@ using System.Runtime.InteropServices.ComTypes;
 using Size = System.Windows.Size;
 using System.Drawing;
 using System.Threading.Tasks;
+using System.Management;
 
 namespace ALPR
 {
@@ -39,7 +40,6 @@ namespace ALPR
             {
                 throw new ArgumentException("USB camera is not available.", "cameraIndex");
             }
-
             Init(cameraIndex);
         }
 
@@ -376,6 +376,17 @@ namespace ALPR
             {
                 BmpBuilder = new BitmapBuilder(width, height, stride, useCache);
                 _ = grabber.SetCallback(this, 1);
+
+                ManagementEventWatcher watcher = new ManagementEventWatcher();
+                WqlEventQuery query = new WqlEventQuery("SELECT * FROM Win32_DeviceChangeEvent WHERE EventType = 2 or EventType = 3");
+                watcher.Query = query;
+                watcher.EventArrived += Watcher_EventArrived;
+                watcher.Start();
+            }
+
+            private void Watcher_EventArrived(object sender, EventArrivedEventArgs e)
+            {
+                _ = FindDevices();
             }
 
             private async void StillCheck()
@@ -385,7 +396,6 @@ namespace ALPR
                     do
                     {
                         await Task.Delay(8);
-                        _ = FindDevices();
                         if (deviceLists[MonikerString] == -1)
                         {
                             FinishType = "DeviceLost";
@@ -394,9 +404,10 @@ namespace ALPR
                     }
                     while (OnWork);
                 }
-                catch
+                catch (Exception ex)
                 {
-                    FinishType = "DeviceLost";
+                    Error?.Invoke(this, ex.Message);
+                    FinishType = "VideoSourceError";
                     SetStop();
                 }
                 finally
@@ -874,7 +885,6 @@ namespace ALPR
                 int Progress(int iProgress);
             }
 
-
             [ComVisible(true), ComImport(), Guid("C6E13370-30AC-11d0-A18C-00A0C9118956"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
             public interface IAMCameraControl
             {
@@ -882,7 +892,6 @@ namespace ALPR
                 int Set([In] CameraControlProperty Property, [In] int lValue, [In] int Flags);
                 int Get([In] CameraControlProperty Property, [In, Out] ref int lValue, [In, Out] ref int Flags);
             }
-
 
             [ComVisible(true), ComImport(), Guid("C6E13360-30AC-11d0-A18C-00A0C9118956"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
             public interface IAMVideoProcAmp
