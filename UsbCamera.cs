@@ -30,35 +30,34 @@ namespace ALPR
         public delegate void Event2(string Description);
         public event Event2 VideoSourceError;
         public event Event2 PlayingFinished;
+        private static FilterInfoCollection deviceLists;
 
-        public UsbCamera(string DeviceName)
+        public UsbCamera(string MonikerString)
         {
-            Init(DeviceName);
+            int cameraIndex = deviceLists[MonikerString];
+            if (cameraIndex < 0)
+            {
+                throw new ArgumentException("USB camera is not available.", "cameraIndex");
+            }
+
+            Init(cameraIndex);
         }
 
-        public static string[] FindDevices()
+        public static FilterInfoCollection FindDevices()
         {
-            return DirectShow.GetFiltes(DirectShow.DsGuid.CLSID_VideoInputDeviceCategory).ToArray();
+            return deviceLists = new FilterInfoCollection();
         }
 
-        private VideoFormat[] GetVideoFormat(int cameraIndex)
+        private static VideoFormat[] GetVideoFormat(int cameraIndex)
         {
             DirectShow.IBaseFilter filter = DirectShow.CreateFilter(DirectShow.DsGuid.CLSID_VideoInputDeviceCategory, cameraIndex);
             DirectShow.IPin pin = DirectShow.FindPin(filter, 0, DirectShow.PIN_DIRECTION.PINDIR_OUTPUT);
             return GetVideoOutputFormat(pin);
         }
 
-        private void Init(string DeviceName)
+        private void Init(int cameraIndex)
         {
-            string[] camera_list = FindDevices();
-            int cameraIndex = camera_list.ToList().FindIndex(x => x == DeviceName);
             VideoFormat[] formats = GetVideoFormat(cameraIndex);
-
-            if (cameraIndex == -1)
-            {
-                throw new ArgumentException("USB camera is not available.", "cameraIndex");
-            }
-
             DirectShow.IBaseFilter vcap_source = CreateVideoCaptureSource(cameraIndex, formats[cameraIndex]);
 
             DirectShow.IGraphBuilder graph = DirectShow.CreateGraph();
@@ -78,7 +77,7 @@ namespace ALPR
                     sampler.Buffered += Sampler_Buffered;
                     sampler.Error += Sampler_Error;
                     sampler.Finished += Sampler_Finished;
-                    sampler.SetStart(DeviceName);
+                    sampler.SetStart(formats[cameraIndex].ToString());
 
                     DirectShow.PlayGraph(graph, DirectShow.FILTER_STATE.Running);
                     IsRunning = true;
@@ -163,7 +162,7 @@ namespace ALPR
             DirectShow.AM_MEDIA_TYPE mt = new DirectShow.AM_MEDIA_TYPE();
             mt.MajorType = DirectShow.DsGuid.MEDIATYPE_Video;
             mt.SubType = DirectShow.DsGuid.MEDIASUBTYPE_RGB24;
-            ismp.SetMediaType(mt);
+            _ = ismp.SetMediaType(mt);
             return filter;
         }
 
@@ -358,9 +357,7 @@ namespace ALPR
 
         private class SampleGrabberCallback : DirectShow.ISampleGrabberCB
         {
-            private int BufferLength = 0;
-            private IntPtr BufferPos;
-            private byte[] buffer = new byte[0];
+            private byte[] buffer = null;
             private Bitmap bmp;
 
             public delegate void Event(Bitmap bmp);
@@ -371,7 +368,8 @@ namespace ALPR
             public event Event2 Finished;
 
             private readonly BitmapBuilder BmpBuilder;
-            private string ThisDevice, FinishType;
+            private string FinishType, MonikerString;
+            private int BufferLength = 0;
             private bool OnWork = false;
 
             public SampleGrabberCallback(DirectShow.ISampleGrabber grabber, int width, int height, int stride, bool useCache)
@@ -380,20 +378,15 @@ namespace ALPR
                 _ = grabber.SetCallback(this, 1);
             }
 
-            private async void StillGet()
+            private async void StillCheck()
             {
                 try
                 {
                     do
                     {
                         await Task.Delay(8);
-                        if (BufferLength > 0)
-                        {
-                            Buffered?.Invoke(GetBitmap());
-                        }
-
-                        string[] device = DirectShow.GetFiltes(DirectShow.DsGuid.CLSID_VideoInputDeviceCategory).ToArray();
-                        if (device.ToList().FindIndex(x => x == ThisDevice) == -1)
+                        _ = FindDevices();
+                        if (deviceLists[MonikerString] == -1)
                         {
                             FinishType = "DeviceLost";
                             SetStop();
@@ -401,15 +394,13 @@ namespace ALPR
                     }
                     while (OnWork);
                 }
-                catch (Exception ex)
+                catch
                 {
-                    Error?.Invoke(this, ex.Message);
-                    FinishType = "VideoSourceError";
+                    FinishType = "DeviceLost";
                     SetStop();
                 }
                 finally
                 {
-                    BufferLength = 0;
                     buffer = null;
                     bmp = null;
                     Finished?.Invoke(this, FinishType ?? "StoppedByUser");
@@ -427,15 +418,13 @@ namespace ALPR
                 }
             }
 
-            public void SetStart(string Device)
+            public void SetStart(string monikerString)
             {
                 if (OnWork == false)
                 {
+                    MonikerString = monikerString;
                     OnWork = true;
-                    ThisDevice = Device;
-
-                    Task task = new Task(StillGet);
-                    task.Start();
+                    StillCheck();
                 }
             }
 
@@ -446,11 +435,19 @@ namespace ALPR
 
             public int BufferCB(double SampleTime, IntPtr pBuffer, int BufferLen)
             {
-                if (pBuffer != BufferPos) { BufferPos = pBuffer; }
-                if (BufferLen != BufferLength) { BufferLength = BufferLen; }
-
-                buffer = new byte[BufferLength];
-                Marshal.Copy(BufferPos, buffer, 0, BufferLength);
+                try
+                {
+                    BufferLength = BufferLen;
+                    buffer = new byte[BufferLength];
+                    Marshal.Copy(pBuffer, buffer, 0, BufferLen);
+                    Buffered?.Invoke(GetBitmap());
+                }
+                catch (Exception ex)
+                {
+                    Error?.Invoke(this, ex.Message);
+                    FinishType = "VideoSourceError";
+                    SetStop();
+                }
 
                 return 0;
             }
@@ -680,7 +677,7 @@ namespace ALPR
                 IPin result = EnumPins(filter, (pin, info) =>
                 {
                     if (info.dir != direction) return false;
-                    return (index == curr_index++);
+                    return index == curr_index++;
                 });
 
                 return result ?? throw new ArgumentException("can't fild pin.");
@@ -1393,6 +1390,34 @@ namespace ALPR
                     return guid.ToString();
                 }
             }
+        }
+
+        public class FilterInfoCollection
+        {
+            private readonly List<FilterInfo> filters = new List<FilterInfo>();
+
+            public FilterInfoCollection()
+            {
+                List<string> FriendName = DirectShow.GetFiltes(DirectShow.DsGuid.CLSID_VideoInputDeviceCategory);
+                for (int i = 0; i < FriendName.Count; i++)
+                {
+                    VideoFormat[] formats = GetVideoFormat(i);
+                    filters.Add(new FilterInfo() { Name = FriendName[i], MonikerString = formats[i].ToString() });
+                }
+            }
+
+            public FilterInfo this[int index] => filters[index];
+
+            public int this[string monikerString] => filters.FindIndex(x => x.MonikerString == monikerString);
+
+            public int Count => filters.Count;
+        }
+
+        public class FilterInfo
+        {
+            public string MonikerString { get; set; }
+
+            public string Name { get; set; }
         }
     }
 }
