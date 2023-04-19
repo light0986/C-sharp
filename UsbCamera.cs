@@ -38,9 +38,12 @@ namespace ALPR
             int cameraIndex = deviceLists[MonikerString];
             if (cameraIndex < 0)
             {
-                throw new ArgumentException("USB camera is not available.", "cameraIndex");
+                VideoSourceError?.Invoke("Not available");
             }
-            Init(cameraIndex);
+            else
+            {
+                Init(cameraIndex);
+            }
         }
 
         public static FilterInfoCollection FindDevices()
@@ -69,37 +72,56 @@ namespace ALPR
             SampleGrabberInfo sample1 = ConnectSampleGrabberAndRenderer(graph, builder, vcap_source, DirectShow.DsGuid.PIN_CATEGORY_CAPTURE);
             if (sample1 != null)
             {
+                SampleGrabberCallback sampler = new SampleGrabberCallback(sample1.Grabber, sample1.Width, sample1.Height, sample1.Stride, false);
+
                 Size = new Size(sample1.Width, sample1.Height);
 
                 Start = () =>
                 {
-                    SampleGrabberCallback sampler = new SampleGrabberCallback(sample1.Grabber, sample1.Width, sample1.Height, sample1.Stride, false);
-                    sampler.Buffered += Sampler_Buffered;
-                    sampler.Error += Sampler_Error;
-                    sampler.Finished += Sampler_Finished;
-                    sampler.SetStart(formats[cameraIndex].ToString());
+                    if (IsRunning == false)
+                    {
+                        if (IsPause)
+                        {
+                            DirectShow.PlayGraph(graph, DirectShow.FILTER_STATE.Running);
+                            sampler.Buffered += Sampler_Buffered;
+                            IsPause = false;
+                        }
+                        else
+                        {
+                            sampler.Buffered += Sampler_Buffered;
+                            sampler.Error += Sampler_Error;
+                            sampler.Finished += Sampler_Finished;
+                            sampler.SetStart(formats[cameraIndex].ToString());
 
-                    DirectShow.PlayGraph(graph, DirectShow.FILTER_STATE.Running);
-                    IsRunning = true;
-                    IsPause = false;
+                            DirectShow.PlayGraph(graph, DirectShow.FILTER_STATE.Running);
+                            IsRunning = true;
+                            IsPause = false;
+                        }
+                    }
+                };
 
-                    Stop = () =>
+                Stop = () =>
+                {
+                    if (IsRunning)
                     {
                         DirectShow.PlayGraph(graph, DirectShow.FILTER_STATE.Stopped);
                         sampler.SetStop();
                         IsRunning = false;
                         IsPause = false;
+                    }
+                };
 
-                        Stop = () => { };
-                        Pause = () => { };
-                    };
-
-                    Pause = () =>
+                Pause = () =>
+                {
+                    if (IsRunning)
                     {
-                        DirectShow.PlayGraph(graph, DirectShow.FILTER_STATE.Paused);
-                        sampler.Buffered -= Sampler_Buffered;
-                        IsPause = true;
-                    };
+                        if (IsPause == false)
+                        {
+                            DirectShow.PlayGraph(graph, DirectShow.FILTER_STATE.Paused);
+                            sampler.Buffered -= Sampler_Buffered;
+                            IsPause = true;
+                        }
+                    }
                 };
             }
         }
@@ -384,6 +406,21 @@ namespace ALPR
                 watcher.Start();
             }
 
+            public void SetStart(string monikerString)
+            {
+                if (OnWork == false)
+                {
+                    MonikerString = monikerString;
+                    OnWork = true;
+                    StillCheck();
+                }
+            }
+
+            public void SetStop()
+            {
+                OnWork = false;
+            }
+
             private void Watcher_EventArrived(object sender, EventArrivedEventArgs e)
             {
                 _ = FindDevices();
@@ -393,8 +430,8 @@ namespace ALPR
             {
                 try
                 {
-                    await Task.Delay(500);
-                    if(buffer != null)
+                    await Task.Delay(1000);
+                    if (buffer != null)
                     {
                         do
                         {
@@ -440,21 +477,6 @@ namespace ALPR
 
                     return bmp;
                 }
-            }
-
-            public void SetStart(string monikerString)
-            {
-                if (OnWork == false)
-                {
-                    MonikerString = monikerString;
-                    OnWork = true;
-                    StillCheck();
-                }
-            }
-
-            public void SetStop()
-            {
-                OnWork = false;
             }
 
             public int BufferCB(double SampleTime, IntPtr pBuffer, int BufferLen)
