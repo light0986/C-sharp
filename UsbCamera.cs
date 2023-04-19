@@ -8,11 +8,28 @@ using Size = System.Windows.Size;
 using System.Drawing;
 using System.Threading.Tasks;
 using System.Management;
+using System.Threading;
 
 namespace ALPR
 {
     public class UsbCamera
     {
+        public enum ColorType { Red = 0, Blue = 1, Green = 2, Default = 3 }
+
+        private ColorType _setType = ColorType.Default;
+        public ColorType SetType
+        {
+            get => _setType;
+            set
+            {
+                _setType = value;
+                if (sampler != null)
+                {
+                    sampler.SetType = _setType;
+                }
+            }
+        }
+
         public Size Size { get; private set; }
 
         public Action Start { get; private set; }
@@ -23,7 +40,7 @@ namespace ALPR
 
         public bool IsRunning { get; private set; } = false;
 
-        public bool IsPause { get; set; } = false;
+        public bool OnPause { get; set; } = false;
 
         public delegate void Event(Bitmap bmp);
         public event Event NewFrame;
@@ -31,7 +48,9 @@ namespace ALPR
         public delegate void Event2(string Description);
         public event Event2 VideoSourceError;
         public event Event2 PlayingFinished;
+
         private static FilterInfoCollection deviceLists;
+        private SampleGrabberCallback sampler;
 
         public UsbCamera(string MonikerString)
         {
@@ -72,7 +91,10 @@ namespace ALPR
             SampleGrabberInfo sample1 = ConnectSampleGrabberAndRenderer(graph, builder, vcap_source, DirectShow.DsGuid.PIN_CATEGORY_CAPTURE);
             if (sample1 != null)
             {
-                SampleGrabberCallback sampler = new SampleGrabberCallback(sample1.Grabber, sample1.Width, sample1.Height, sample1.Stride, false);
+                sampler = new SampleGrabberCallback(sample1.Grabber, sample1.Width, sample1.Height, sample1.Stride, false)
+                {
+                    SetType = SetType
+                };
 
                 Size = new Size(sample1.Width, sample1.Height);
 
@@ -80,11 +102,10 @@ namespace ALPR
                 {
                     if (IsRunning == false)
                     {
-                        if (IsPause)
+                        if (OnPause)
                         {
                             DirectShow.PlayGraph(graph, DirectShow.FILTER_STATE.Running);
-                            sampler.Buffered += Sampler_Buffered;
-                            IsPause = false;
+                            OnPause = false;
                         }
                         else
                         {
@@ -92,10 +113,9 @@ namespace ALPR
                             sampler.Error += Sampler_Error;
                             sampler.Finished += Sampler_Finished;
                             sampler.SetStart(formats[cameraIndex].ToString());
-
                             DirectShow.PlayGraph(graph, DirectShow.FILTER_STATE.Running);
                             IsRunning = true;
-                            IsPause = false;
+                            OnPause = false;
                         }
                     }
                 };
@@ -104,10 +124,13 @@ namespace ALPR
                 {
                     if (IsRunning)
                     {
-                        DirectShow.PlayGraph(graph, DirectShow.FILTER_STATE.Stopped);
+                        sampler.Buffered -= Sampler_Buffered;
+                        sampler.Error -= Sampler_Error;
+                        sampler.Finished -= Sampler_Finished;
                         sampler.SetStop();
+                        DirectShow.PlayGraph(graph, DirectShow.FILTER_STATE.Stopped);
                         IsRunning = false;
-                        IsPause = false;
+                        OnPause = false;
                     }
                 };
 
@@ -115,11 +138,10 @@ namespace ALPR
                 {
                     if (IsRunning)
                     {
-                        if (IsPause == false)
+                        if (OnPause == false)
                         {
                             DirectShow.PlayGraph(graph, DirectShow.FILTER_STATE.Paused);
-                            sampler.Buffered -= Sampler_Buffered;
-                            IsPause = true;
+                            OnPause = true;
                         }
                     }
                 };
@@ -380,7 +402,7 @@ namespace ALPR
         private class SampleGrabberCallback : DirectShow.ISampleGrabberCB
         {
             private byte[] buffer = null;
-            private Bitmap bmp;
+            public ColorType SetType { get; set; }
 
             public delegate void Event(Bitmap bmp);
             public event Event Buffered;
@@ -412,7 +434,9 @@ namespace ALPR
                 {
                     MonikerString = monikerString;
                     OnWork = true;
-                    StillCheck();
+
+                    Task task = new Task(StillCheck);
+                    task.Start();
                 }
             }
 
@@ -426,16 +450,15 @@ namespace ALPR
                 _ = FindDevices();
             }
 
-            private async void StillCheck()
+            private void StillCheck()
             {
                 try
                 {
-                    await Task.Delay(1000);
-                    if (buffer != null)
+                    Thread.Sleep(1000);
+                    if (BufferLength != 0)
                     {
                         do
                         {
-                            await Task.Delay(8);
                             if (deviceLists[MonikerString] == -1)
                             {
                                 FinishType = "DeviceLost";
@@ -443,14 +466,18 @@ namespace ALPR
                             }
                             else
                             {
-                                Buffered?.Invoke(GetBitmap());
+                                lock (buffer)
+                                {
+                                    Buffered?.Invoke(GetBitmap());
+                                }
+                                Thread.Sleep(8);
                             }
                         }
                         while (OnWork);
                     }
                     else
                     {
-                        FinishType = "No Signal";
+                        FinishType = "NoSignal";
                         SetStop();
                     }
                 }
@@ -463,28 +490,48 @@ namespace ALPR
                 finally
                 {
                     buffer = null;
-                    bmp = null;
                     Finished?.Invoke(this, FinishType ?? "StoppedByUser");
                 }
             }
 
             public Bitmap GetBitmap()
             {
-                lock (buffer)
+                if (SetType == ColorType.Default)
                 {
-                    bmp = BmpBuilder.BufferToBitmap(buffer);
+                    Bitmap bmp = BmpBuilder.BufferToBitmap(buffer);
                     bmp.RotateFlip(RotateFlipType.RotateNoneFlipX);
-
                     return bmp;
+                }
+                else
+                {
+                    byte[] newbuffer = new byte[BufferLength];
+                    SetBuffer(ref newbuffer, SetType);
+                    Bitmap bmp = BmpBuilder.BufferToBitmap(newbuffer);
+                    bmp.RotateFlip(RotateFlipType.RotateNoneFlipX);
+                    return bmp;
+                }
+            }
+
+            private void SetBuffer(ref byte[] matrix, ColorType color)
+            {
+                for (int i = 0; i < BufferLength; i++)
+                {
+                    if (color == ColorType.Red) { matrix[i] = i % 3 == 2 ? buffer[i] : (byte)0; }
+                    if (color == ColorType.Green) { matrix[i] = i % 3 == 1 ? buffer[i] : (byte)0; }
+                    if (color == ColorType.Blue) { matrix[i] = i % 3 == 0 ? buffer[i] : (byte)0; }
                 }
             }
 
             public int BufferCB(double SampleTime, IntPtr pBuffer, int BufferLen)
             {
+                if (buffer == null)
+                {
+                    buffer = new byte[BufferLen];
+                    BufferLength = BufferLen;
+                }
+
                 try
                 {
-                    BufferLength = BufferLen;
-                    buffer = new byte[BufferLength];
                     Marshal.Copy(pBuffer, buffer, 0, BufferLen);
                 }
                 catch (Exception ex)
