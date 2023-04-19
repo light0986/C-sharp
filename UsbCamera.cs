@@ -393,16 +393,29 @@ namespace ALPR
             {
                 try
                 {
-                    do
+                    await Task.Delay(500);
+                    if(buffer != null)
                     {
-                        await Task.Delay(8);
-                        if (deviceLists[MonikerString] == -1)
+                        do
                         {
-                            FinishType = "DeviceLost";
-                            SetStop();
+                            await Task.Delay(8);
+                            if (deviceLists[MonikerString] == -1)
+                            {
+                                FinishType = "DeviceLost";
+                                SetStop();
+                            }
+                            else
+                            {
+                                Buffered?.Invoke(GetBitmap());
+                            }
                         }
+                        while (OnWork);
                     }
-                    while (OnWork);
+                    else
+                    {
+                        FinishType = "No Signal";
+                        SetStop();
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -451,7 +464,6 @@ namespace ALPR
                     BufferLength = BufferLen;
                     buffer = new byte[BufferLength];
                     Marshal.Copy(pBuffer, buffer, 0, BufferLen);
-                    Buffered?.Invoke(GetBitmap());
                 }
                 catch (Exception ex)
                 {
