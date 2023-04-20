@@ -9,13 +9,12 @@ using System.Drawing;
 using System.Threading.Tasks;
 using System.Management;
 using System.Threading;
+using static ALPR.Tools.Entity;
 
-namespace ALPR
+namespace ALPR.Tools
 {
     public class UsbCamera
     {
-        public enum ColorType { Red = 0, Blue = 1, Green = 2, Default = 3 }
-
         private ColorType _setType = ColorType.Default;
         public ColorType SetType
         {
