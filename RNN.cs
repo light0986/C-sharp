@@ -13,7 +13,7 @@ namespace ColorRNN
         //不轉Matrix訓練法:
         //a.中心值為:0,127,127,127
         //b.範圍為0~255
-        //c.如果用學習率，梯度消失會很明顯
+        //c.學習量太大，梯度消失會很明顯
 
         public void TrainPositive(ref RNNData rNN, Bitmap input, string Answer, double Learningrate)
         {
