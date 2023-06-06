@@ -241,7 +241,7 @@ namespace INIManager
                                 string nowKey = Lines[i].Substring(0, equalSignPos);
                                 if (nowKey == Key)
                                 {
-                                    string nowValue = Lines[i].Substring(equalSignPos, Lines[i].Length - equalSignPos - 1);
+                                    string nowValue = Lines[i].Substring(equalSignPos + 1, Lines[i].Length - equalSignPos - 1);
                                     Lines[i] = newKey + "=" + nowValue;
                                     break;
                                 }
