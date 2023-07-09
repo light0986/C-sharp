@@ -1,8 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace AudioAnimation
 {
@@ -152,41 +148,106 @@ namespace AudioAnimation
 
         public string GetSubchunk2ID()
         {
-            string str = char.ConvertFromUtf32(FileArray[36]);
-            str += char.ConvertFromUtf32(FileArray[37]);
-            str += char.ConvertFromUtf32(FileArray[38]);
-            str += char.ConvertFromUtf32(FileArray[39]);
+            int Pos = DataPos();
+            if (Pos != 0)
+            {
+                string str = char.ConvertFromUtf32(FileArray[Pos]);
+                str += char.ConvertFromUtf32(FileArray[Pos + 1]);
+                str += char.ConvertFromUtf32(FileArray[Pos + 2]);
+                str += char.ConvertFromUtf32(FileArray[Pos + 3]);
 
-            return str;
+                return str;
+            }
+            return "";
         }
 
         public int GetSubchunk2Size()
         {
-            string str = FileArray[43].ToString("X2");
-            str += FileArray[42].ToString("X2");
-            str += FileArray[41].ToString("X2");
-            str += FileArray[40].ToString("X2");
-
-            try
+            int Pos = DataPos();
+            if (Pos != 0)
             {
-                return Convert.ToInt32(str, 16);
+                string str = FileArray[Pos + 7].ToString("X2");
+                str += FileArray[Pos + 6].ToString("X2");
+                str += FileArray[Pos + 5].ToString("X2");
+                str += FileArray[Pos + 4].ToString("X2");
+
+                try
+                {
+                    return Convert.ToInt32(str, 16);
+                }
+                catch { }
             }
-            catch { }
+            return 0;
+        }
+
+        private int DataPos()
+        {
+            for (int i = 0; i < FileArray.Length; i++)
+            {
+                //64 61 74 61
+                if (FileArray[i] == 0x64 && FileArray[i + 1] == 0x61 && FileArray[i + 2] == 0x74 && FileArray[i + 3] == 0x61)
+                {
+                    return i;
+                }
+            }
             return 0;
         }
 
         public byte[] GetData()
         {
-            byte[] Data = new byte[FileArray.Length - 44];
-            for (int i = 0; i < FileArray.Length; i++)
+            int L = GetSubchunk2Size();
+            if (L != 0)
             {
-
-                if (i >= 44)
+                byte[] Data = new byte[L];
+                for (int i = 1; i <= L; i++)
                 {
-                    Data[i - 44] = FileArray[i];
+                    Data[L - i] = FileArray[FileArray.Length - i];
+                }
+                return Data;
+            }
+            return new byte[0];
+        }
+
+        public double[] GetSmallData()
+        {
+            int cut = 4;
+            byte[] Data = GetData();
+            double[] sData = new double[Data.Length / cut];
+
+            double sample_rate = GetSampleRate();
+            double delta = 2.0 * Math.PI * (sample_rate / 1000) / sample_rate;
+
+            for (int i = 0; i < sData.Length; i++)
+            {
+                string data1 = Data[(i * cut) + 1].ToString("X2");
+                data1 += Data[(i * cut) + 0].ToString("X2");
+                double one = (double)Convert.ToInt32(data1, 16) / 65536;
+
+                string data2 = Data[(i * cut) + 3].ToString("X2");
+                data2 += Data[(i * cut) + 2].ToString("X2");
+                double two = (double)Convert.ToInt32(data2, 16) / 65536;
+
+                double MaxValue = one > two ? one : two;
+                sData[i] = 50 - (Math.Abs(0.5 - MaxValue) * 100);
+                //sData[i] = MaxValue;
+            }
+
+            double L = sample_rate / 100.0;
+            double[] outData = new double[(int)(sData.Length / L) + 1];
+
+            for(int i = 0; i < outData.Length; i++)
+            {
+                outData[i] = 0;
+
+                for (int j = 0; j < L; j++)
+                {
+                    int pos = (i * (int)L) + j;
+                    if (outData[i] < sData[pos]) { outData[i] = sData[pos]; }
+                    if (pos == sData.Length - 1) { break; }
                 }
             }
-            return Data;
+
+            return outData;
         }
     }
 }
