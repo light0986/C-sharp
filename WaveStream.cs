@@ -7,7 +7,7 @@ using System.Runtime.InteropServices.ComTypes;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace 重返雲之國_外傳.Models
+namespace SoundPlayer調音量.Models
 {
     public class WaveStream : Stream
     {
@@ -63,7 +63,7 @@ namespace 重返雲之國_外傳.Models
             if (baseStream == null)
                 throw new ArgumentNullException("baseStream");
             if (!baseStream.CanRead)
-                throw new ArgumentException("読み込み可能なストリームを指定してください", "baseStream");
+                throw new ArgumentException("", "baseStream");
 
             this.reader = new BinaryReader(baseStream);
 
