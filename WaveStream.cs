@@ -84,13 +84,9 @@ namespace SoundPlayer調音量.Models
             using (var headerStream = new MemoryStream())
             {
                 var writer = new BinaryWriter(headerStream);
-
-                // RIFFヘッダ
                 var riffHeader = reader.ReadBytes(12);
 
                 writer.Write(riffHeader);
-
-                // dataチャンクまでの内容をwriterに書き写す
                 for (; ; )
                 {
                     var chunkHeader = reader.ReadBytes(8);
