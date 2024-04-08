@@ -27,7 +27,15 @@ namespace Json測試
                         }
                         else
                         {
-                            jsonBuilder.Append("\"" + col.ColumnName + "\":" + row[col.ColumnName] + ",");
+                            string value = row[col.ColumnName].ToString();
+                            if (value != "")
+                            {
+                                jsonBuilder.Append("\"" + col.ColumnName + "\":" + row[col.ColumnName] + ",");
+                            }
+                            else
+                            {
+                                jsonBuilder.Append("\"" + col.ColumnName + "\":null,");
+                            }
                         }
                     }
                     jsonBuilder.Remove(jsonBuilder.Length - 1, 1);
@@ -57,16 +65,20 @@ namespace Json測試
                         {
                             dataTable.Columns.Add(kvp.Key, typeof(String));
                         }
-                        else if (kvp.Value is double)
+                        else if (kvp.Value is decimal)
                         {
-                            dataTable.Columns.Add(kvp.Key, typeof(Double));
+                            dataTable.Columns.Add(kvp.Key, typeof(Decimal));
                         }
                         else
                         {
                             dataTable.Columns.Add(kvp.Key, typeof(Int32));
                         }
                     }
-                    row[kvp.Key] = kvp.Value;
+
+                    if (kvp.Value != null)
+                    {
+                        row[kvp.Key] = kvp.Value;
+                    }
                 }
                 dataTable.Rows.Add(row);
             }
