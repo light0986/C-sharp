@@ -53,7 +53,18 @@ namespace Json測試
                 {
                     if (!dataTable.Columns.Contains(kvp.Key))
                     {
-                        dataTable.Columns.Add(kvp.Key);
+                        if (kvp.Value is string)
+                        {
+                            dataTable.Columns.Add(kvp.Key, typeof(String));
+                        }
+                        else if (kvp.Value is double)
+                        {
+                            dataTable.Columns.Add(kvp.Key, typeof(Double));
+                        }
+                        else
+                        {
+                            dataTable.Columns.Add(kvp.Key, typeof(Int32));
+                        }
                     }
                     row[kvp.Key] = kvp.Value;
                 }
