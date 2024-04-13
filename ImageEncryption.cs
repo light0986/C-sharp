@@ -15,302 +15,318 @@ namespace 各種功能製作
     /// </summary>
     public class ImageEncryption
     {
+        private readonly EncryptionTools image = new EncryptionTools();
+
         /// <summary>
         /// 圖片加密工具，用以驗證圖片是否被修改過。
         /// 輸入字串，選擇一張圖片，會將字串加密進入圖片內。
         /// </summary>
-        public void DoEncrypt(string text)
+        public Bitmap DoEncrypt(string text, Bitmap input = null, string DirPath = "")
         {
-            EncryptionTools image = new EncryptionTools();
-            Console.WriteLine("原始字串: " + text);
-
             #region 選擇一個圖片檔，並獲取圖片的原始byte[] -> bgra
-            byte[] bmpArr = null;
+            Console.WriteLine("原始字串: " + text);
+            string savePath = "", tempName = "";
             Bitmap bmp = null;
-            OpenFileDialog openFileDialog1 = new OpenFileDialog
-            {
-                Filter = "Image Files (*.bmp;*.jpg;*.jpeg,*.png)|*.BMP;*.JPG;*.JPEG;*.PNG"
-            };
-            if (DialogResult.OK == openFileDialog1.ShowDialog())
-            {
-                bmp = new Bitmap(openFileDialog1.FileName);
-                bmpArr = image.BitmapToByteArray(bmp);
 
-                Console.WriteLine("圖片寬: " + bmp.Width + ", 圖片高: " + bmp.Height);
-                Console.WriteLine("圖片資料總長度: " + string.Join("", bmpArr).Length); //BGRA
+            //假如輸入的Bitmap是空的，要自己指定一張圖
+            if (input == null)
+            {
+                OpenFileDialog openFileDialog1 = new OpenFileDialog
+                {
+                    Filter = "Image Files (*.png)|*.PNG"
+                };
+                if (DialogResult.OK == openFileDialog1.ShowDialog())
+                {
+                    bmp = new Bitmap(openFileDialog1.FileName);
+                    string path = Path.GetDirectoryName(openFileDialog1.FileName);
+                    tempName = openFileDialog1.FileName.Replace(path, "").Replace("\\", "");
+                }
             }
+            //如果輸入的Bitmap有東西，以輸入的Bitmap進行改動
+            else
+            {
+                bmp = new Bitmap(input);
+                tempName = text + ".png";
+            }
+
+            byte[] bmpArr = image.BitmapToByteArray(bmp);
+            Console.WriteLine("圖片寬: " + bmp.Width + ", 圖片高: " + bmp.Height);
+            Console.WriteLine("圖片資料總長度: " + string.Join("", bmpArr).Length); //BGRA
             #endregion
 
-            if (bmpArr.Length > 0)
+            #region 存檔位子
+            if (DirPath == null || String.IsNullOrWhiteSpace(DirPath))
             {
-                #region 確認alpha值不為0的pixel * 3數量
-                int AlphaCount = image.AlphaZeroCount(bmp);
-                int total = bmp.Width * bmp.Height;
-                int cuc = (total - AlphaCount) * 3;
-                Console.WriteLine("Alpha非0的pixel數量" + cuc);
-                #endregion
-
-                #region 把一個字串轉換成binary[]
-                int[] binaryArray = image.StringToBinary(text);
-                int bl = string.Join("", binaryArray).Length;
-                Console.WriteLine("字串轉二進位長度: " + bl); //GUID固定512
-                #endregion
-
-                //判斷可不可以藏字
-                if (cuc - bl > 0)
+                Console.WriteLine("存檔");
+                FolderBrowserDialog saveFileDialog = new FolderBrowserDialog
                 {
-                    //創造一個新的bgra
-                    byte[] newB = new byte[bmpArr.Length];
-
-                    #region 開始藏字，並且多餘部分全部為0，代表空白鍵
-                    Console.WriteLine("可以藏");
-
-                    int textIndex = 0;
-
-                    //每4個位元一組
-                    for (int i = 0; i < total; i++)
-                    {
-                        //如果bmp該a值為0，寫入相同資料
-                        if (bmpArr[(i * 4) + 3] == 0)
-                        {
-                            newB[(i * 4) + 0] = bmpArr[(i * 4) + 0];
-                            newB[(i * 4) + 1] = bmpArr[(i * 4) + 1];
-                            newB[(i * 4) + 2] = bmpArr[(i * 4) + 2];
-                            newB[(i * 4) + 3] = bmpArr[(i * 4) + 3];
-                        }
-                        //不為0時，寫入要加密的數字
-                        else
-                        {
-                            #region B藏字
-                            //計算輸入值 與 藏字
-                            if (textIndex < binaryArray.Length)
-                            {
-                                byte b = bmpArr[(i * 4) + 0];
-                                int value = image.Mode2_Encrypt(b, binaryArray[textIndex]);
-                                newB[(i * 4) + 0] = (byte)value;
-                                textIndex++;
-                            }
-                            //藏0
-                            else
-                            {
-                                byte b = bmpArr[(i * 4) + 0];
-                                int value = image.Mode2_Encrypt(b, 0);
-                                newB[(i * 4) + 0] = (byte)value;
-                            }
-                            #endregion
-
-                            #region G藏字
-                            //計算輸入值 與 藏字
-                            if (textIndex < binaryArray.Length)
-                            {
-                                byte b = bmpArr[(i * 4) + 1];
-                                int value = image.Mode2_Encrypt(b, binaryArray[textIndex]);
-                                newB[(i * 4) + 1] = (byte)value;
-                                textIndex++;
-                            }
-                            //藏0
-                            else
-                            {
-                                byte b = bmpArr[(i * 4) + 1];
-                                int value = image.Mode2_Encrypt(b, 0);
-                                newB[(i * 4) + 1] = (byte)value;
-                            }
-                            #endregion
-
-                            #region R藏字
-                            //計算輸入值 與 藏字
-                            if (textIndex < binaryArray.Length)
-                            {
-                                byte b = bmpArr[(i * 4) + 2];
-                                int value = image.Mode2_Encrypt(b, binaryArray[textIndex]);
-                                newB[(i * 4) + 2] = (byte)value;
-                                textIndex++;
-                            }
-                            //藏0
-                            else
-                            {
-                                byte b = bmpArr[(i * 4) + 2];
-                                int value = image.Mode2_Encrypt(b, 0);
-                                newB[(i * 4) + 2] = (byte)value;
-                            }
-                            #endregion
-
-                            newB[(i * 4) + 3] = bmpArr[(i * 4) + 3]; //Alpha值必須複寫
-                        }
-                    }
-                    #endregion
-
-                    #region 將newB[]轉成newBitmap
-                    Console.WriteLine("藏字成功");
-                    Bitmap newBitmap = image.ByteToBitmap(newB, bmp.Width, bmp.Height);
-                    #endregion
-
-                    #region 存檔
-                    Console.WriteLine("存檔");
-                    SaveFileDialog saveFileDialog = new SaveFileDialog
-                    {
-                        Filter = "PNG|*.png"
-                    };
-                    if (saveFileDialog.ShowDialog() == DialogResult.OK)
-                    {
-                        if (File.Exists(saveFileDialog.FileName))
-                        {
-                            string path = Path.GetDirectoryName(saveFileDialog.FileName);
-                            string newName = "_" + saveFileDialog.FileName.Replace(path, "").Replace("\\", "");
-
-                            newBitmap.Save(Path.Combine(path, newName), ImageFormat.Png);
-                        }
-                        else
-                        {
-                            newBitmap.Save(saveFileDialog.FileName, ImageFormat.Png);
-                        }
-                    }
-                    #endregion
-
-                    #region 讀取剛剛的png做驗證
-                    Console.WriteLine("工作完成，請讀取剛剛的png做驗證。");
-                    OpenFileDialog openFileDialog2 = new OpenFileDialog
-                    {
-                        Filter = "Image Files (*.png)|*.PNG"
-                    };
-                    if (DialogResult.OK == openFileDialog2.ShowDialog())
-                    {
-                        bmp = new Bitmap(openFileDialog2.FileName);
-                        bmpArr = image.BitmapToByteArray(bmp);
-
-                        Console.WriteLine("圖片寬: " + bmp.Width + ", 圖片高: " + bmp.Height);
-                        Console.WriteLine("圖片資料總長度: " + string.Join("", bmpArr).Length); //BGRA
-                    }
-                    #endregion
-
-                    #region 確認alpha值不為0的pixel * 3數量
-                    AlphaCount = image.AlphaZeroCount(bmp);
-                    total = bmp.Width * bmp.Height;
-                    int _cuc = (total - AlphaCount) * 3;
-                    Console.WriteLine("驗證的圖片Alpha非0的pixel數量" + _cuc);
-                    #endregion
-
-                    if (_cuc == cuc)
-                    {
-                        //可能是答案的數量
-                        int[] CheckArr = new int[_cuc + 16 - (_cuc % 16)];
-                        int index = 0;
-
-                        for (int i = 0; i < total; i++)
-                        {
-                            //Alpha值忽略
-                            if (bmpArr[(i * 4) + 3] != 0)
-                            {
-                                #region B藏字
-                                //計算輸入值 與 藏字
-                                int value = image.Mode2_Decrypt(bmpArr[(i * 4) + 0]);
-                                CheckArr[(index * 3) + 0] = (byte)value;
-                                #endregion
-
-                                #region G藏字
-                                //計算輸入值 與 藏字
-                                value = image.Mode2_Decrypt(bmpArr[(i * 4) + 1]);
-                                CheckArr[(index * 3) + 1] = (byte)value;
-                                #endregion
-
-                                #region R藏字
-                                //計算輸入值 與 藏字
-                                value = image.Mode2_Decrypt(bmpArr[(i * 4) + 2]);
-                                CheckArr[(index * 3) + 2] = (byte)value;
-                                #endregion
-
-                                index++;
-                            }
-                        }
-
-                        string ans = image.BinaryToString(CheckArr).Replace("\\0", "");
-                        Console.WriteLine("解讀答案為:" + ans);
-
-                        if (ans == text)
-                        {
-                            Console.WriteLine("藏字成功");
-                        }
-                        else
-                        {
-                            Console.WriteLine("藏字失敗");
-                        }
-                    }
-                    else
-                    {
-                        Console.WriteLine("圖片資料不同");
-                    }
-                }
-                else
+                    Description = "Choose Save Path"
+                };
+                if (saveFileDialog.ShowDialog() == DialogResult.OK)
                 {
-                    Console.WriteLine("不可以藏");
+                    savePath = saveFileDialog.SelectedPath;
                 }
             }
             else
             {
-                Console.WriteLine("圖片轉換錯誤");
+                savePath = DirPath;
             }
 
-            Console.ReadKey();
+            if (File.Exists(Path.Combine(savePath, tempName)))
+            {
+                tempName = "_" + tempName;
+            }
+            savePath = Path.Combine(savePath, tempName);
+            #endregion
+
+            #region 判斷byte[]轉換是否成功
+            if (bmpArr == null || bmpArr.Length == 0) { Console.WriteLine("圖片轉換錯誤"); return null; }
+            #endregion
+
+            #region 確認alpha值不為0的pixel * 3數量
+            int AlphaCount = image.AlphaZeroCount(bmp);
+            int total = bmp.Width * bmp.Height * 4;
+            int cuc = (total - AlphaCount) * 3;
+            Console.WriteLine("Alpha非0的pixel數量" + cuc);
+            #endregion
+
+            #region 把一個字串轉換成binary[]
+                int[] binaryArray = image.StringToBinary(text);
+                int bl = string.Join("", binaryArray).Length;
+                Console.WriteLine("字串轉二進位長度: " + bl); //GUID固定512
+            #endregion
+
+            #region 判斷可不可以藏字
+            if (cuc - bl < 0) { Console.WriteLine("不可以藏"); return null; }
+            #endregion
+
+            #region 開始藏字，並且多餘部分全部為0，代表空白鍵
+            Console.WriteLine("可以藏");
+            //創造一個新的bgra
+            byte[] newB = new byte[bmpArr.Length];
+            int textIndex = 0;
+
+            //每4個位元一組
+            for (int i = 0; i < total; i+=4)
+            {
+                //如果bmp該a值為0，寫入相同資料
+                if (bmpArr[i + 3] == 0)
+                {
+                    newB[i + 0] = bmpArr[i + 0];
+                    newB[i + 1] = bmpArr[i + 1];
+                    newB[i + 2] = bmpArr[i + 2];
+                    newB[i + 3] = bmpArr[i + 3];
+                }
+                //不為0時，寫入要加密的數字
+                else
+                {
+                    #region B藏字
+                    //計算輸入值 與 藏字
+                    if (textIndex < binaryArray.Length)
+                    {
+                        byte b = bmpArr[i + 0];
+                        int value = image.Mode2_Encrypt(b, binaryArray[textIndex]);
+                        newB[i + 0] = (byte)value;
+                        textIndex++;
+                    }
+                    //藏0
+                    else
+                    {
+                        byte b = bmpArr[i + 0];
+                        int value = image.Mode2_Encrypt(b, 0);
+                        newB[i + 0] = (byte)value;
+                    }
+                    #endregion
+
+                    #region G藏字
+                    //計算輸入值 與 藏字
+                    if (textIndex < binaryArray.Length)
+                    {
+                        byte b = bmpArr[i + 1];
+                        int value = image.Mode2_Encrypt(b, binaryArray[textIndex]);
+                        newB[i + 1] = (byte)value;
+                        textIndex++;
+                    }
+                    //藏0
+                    else
+                    {
+                        byte b = bmpArr[i + 1];
+                        int value = image.Mode2_Encrypt(b, 0);
+                        newB[i + 1] = (byte)value;
+                    }
+                    #endregion
+
+                    #region R藏字
+                    //計算輸入值 與 藏字
+                    if (textIndex < binaryArray.Length)
+                    {
+                        byte b = bmpArr[i + 2];
+                        int value = image.Mode2_Encrypt(b, binaryArray[textIndex]);
+                        newB[i + 2] = (byte)value;
+                        textIndex++;
+                    }
+                    //藏0
+                    else
+                    {
+                        byte b = bmpArr[i + 2];
+                        int value = image.Mode2_Encrypt(b, 0);
+                        newB[i + 2] = (byte)value;
+                    }
+                    #endregion
+
+                    newB[i + 3] = bmpArr[i + 3]; //Alpha值必須複寫
+                }
+            }
+            #endregion
+
+            #region 將newB[]轉成newBitmap，並且存檔
+            Bitmap newBitmap = image.ByteToBitmap(newB, bmp.Width, bmp.Height);
+            newBitmap.Save(savePath, ImageFormat.Png);
+            Console.WriteLine("藏字成功");
+            Console.WriteLine("存檔位置: " + savePath);
+            #endregion
+
+            #region 讀取剛剛的png做驗證
+            bmp = new Bitmap(savePath);
+            bmpArr = image.BitmapToByteArray(bmp);
+            Console.WriteLine("工作完成，請讀取剛剛的png做驗證。");
+            Console.WriteLine("圖片寬: " + bmp.Width + ", 圖片高: " + bmp.Height);
+            Console.WriteLine("圖片資料總長度: " + string.Join("", bmpArr).Length); //BGRA
+            #endregion
+
+            #region 確認alpha值不為0的pixel * 3數量
+            AlphaCount = image.AlphaZeroCount(bmp);
+            total = bmp.Width * bmp.Height * 4;
+            int _cuc = (total - AlphaCount) * 3;
+            Console.WriteLine("驗證的圖片Alpha非0的pixel數量" + _cuc);
+            #endregion
+
+            #region 判段是否存取失偵
+            if (_cuc != cuc)
+            {
+                File.Delete(savePath);
+                Console.WriteLine("圖片資料不同");
+                return null;
+            }
+            #endregion
+
+            #region 驗證解讀結果
+            //可能是答案的數量
+            int[] CheckArr = new int[_cuc + 16 - (_cuc % 16)];
+            int index = 0;
+
+            for (int i = 0; i < total; i+=4)
+            {
+                //Alpha值忽略
+                if (bmpArr[i + 3] != 0)
+                {
+                    #region B藏字
+                    //計算輸入值 與 藏字
+                    int value = image.Mode2_Decrypt(bmpArr[i + 0]);
+                    CheckArr[index] = (byte)value;
+                    index++;
+                    #endregion
+
+                    #region G藏字
+                    //計算輸入值 與 藏字
+                    value = image.Mode2_Decrypt(bmpArr[i + 1]);
+                    CheckArr[index] = (byte)value;
+                    index++;
+                    #endregion
+
+                    #region R藏字
+                    //計算輸入值 與 藏字
+                    value = image.Mode2_Decrypt(bmpArr[i + 2]);
+                    CheckArr[index] = (byte)value;
+                    index++;
+                    #endregion
+                }
+            }
+            string ans = image.BinaryToString(CheckArr).Replace("\\0", "");
+            Console.WriteLine("解讀答案為:" + ans);
+            #endregion
+
+            #region 比對與答案是否一至?
+            if (ans != text)
+            {
+                Console.WriteLine("藏字失敗");
+                File.Delete(savePath);
+                return null;
+            }
+
+            Console.WriteLine("藏字成功");
+            return newBitmap;
+            #endregion
         }
 
-        public string DoDecrypt()
+        public string DoDecrypt(Bitmap input = null)
         {
-            EncryptionTools image = new EncryptionTools();
-
-            Console.WriteLine("請選擇一個圖片檔");
-            OpenFileDialog openFileDialog2 = new OpenFileDialog
+            #region 選擇圖片，轉換成byte[]
+            Bitmap bmp = null;
+            if (input == null)
             {
-                Filter = "Image Files (*.png)|*.PNG"
-            };
-            if (DialogResult.OK == openFileDialog2.ShowDialog())
-            {
-                Bitmap bmp = new Bitmap(openFileDialog2.FileName);
-                byte[] bmpArr = image.BitmapToByteArray(bmp);
- 
-                #region 初始化
-                int[] CheckArr = new int[bmpArr.Length + 16 - (bmpArr.Length % 16)];
-                for (int i = 0; i < CheckArr.Length; i++)
+                Console.WriteLine("請選擇一個圖片檔");
+                OpenFileDialog openFileDialog2 = new OpenFileDialog
                 {
-                    CheckArr[i] = 0;
-                }
-                int index = 0;
-                #endregion
-
-                for (int i = 0; i < bmpArr.Length; i += 4)
+                    Filter = "Image Files (*.png)|*.PNG"
+                };
+                if (DialogResult.OK == openFileDialog2.ShowDialog())
                 {
-                    //Alpha值忽略
-                    if (bmpArr[i + 3] != 0)
-                    {
-                        #region B藏字
-                        //計算輸入值 與 藏字
-                        int value = image.Mode2_Decrypt(bmpArr[i + 0]);
-                        CheckArr[index] = (byte)value;
-                        index++;
-                        #endregion
-
-                        #region G藏字
-                        //計算輸入值 與 藏字
-                        value = image.Mode2_Decrypt(bmpArr[i + 1]);
-                        CheckArr[index] = (byte)value;
-                        index++;
-                        #endregion
-
-                        #region R藏字
-                        //計算輸入值 與 藏字
-                        value = image.Mode2_Decrypt(bmpArr[i + 2]);
-                        CheckArr[index] = (byte)value;
-                        index++;
-                        #endregion
-                    }
+                    bmp = new Bitmap(openFileDialog2.FileName);
                 }
-
-                string ans = image.BinaryToString(CheckArr).Replace("\\0", "");
-                Console.WriteLine("解讀答案為:" + ans);
-                Console.ReadKey();
-                return ans;
             }
+            else
+            {
+                bmp = new Bitmap(input);
+            }
+            byte[] bmpArr = image.BitmapToByteArray(bmp);
+            #endregion
 
-            return "錯誤";
+            #region 創造一個初始化array
+            int[] CheckArr = new int[bmpArr.Length + 16 - (bmpArr.Length % 16)];
+            for (int i = 0; i < CheckArr.Length; i++)
+            {
+                CheckArr[i] = 0;
+            }
+            int index = 0;
+            #endregion
+
+            #region 將答案放進初始化array中
+            for (int i = 0; i < bmpArr.Length; i += 4)
+            {
+                //Alpha值忽略
+                if (bmpArr[i + 3] != 0)
+                {
+                    #region B藏字
+                    //計算輸入值 與 藏字
+                    int value = image.Mode2_Decrypt(bmpArr[i + 0]);
+                    CheckArr[index] = (byte)value;
+                    index++;
+                    #endregion
+
+                    #region G藏字
+                    //計算輸入值 與 藏字
+                    value = image.Mode2_Decrypt(bmpArr[i + 1]);
+                    CheckArr[index] = (byte)value;
+                    index++;
+                    #endregion
+
+                    #region R藏字
+                    //計算輸入值 與 藏字
+                    value = image.Mode2_Decrypt(bmpArr[i + 2]);
+                    CheckArr[index] = (byte)value;
+                    index++;
+                    #endregion
+                }
+            }
+            #endregion
+
+            #region 解析答案並回傳
+            string ans = image.BinaryToString(CheckArr).Replace("\\0", "");
+            Console.WriteLine("解讀答案為:" + ans);
+            Console.ReadKey();
+            return ans;
+            #endregion
         }
     }
 
