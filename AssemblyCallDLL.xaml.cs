@@ -51,6 +51,7 @@ namespace 雲箱二創
                 try
                 {
                     Assembly dll = Assembly.LoadFile(path);
+                    AssemblyName assemName = dll.GetName();
                     List<Type> dllName = dll.GetExportedTypes().ToList();
                     Type Info = dllName.First(x => x.Name == "Info");
 
